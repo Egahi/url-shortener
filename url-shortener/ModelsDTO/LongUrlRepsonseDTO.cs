@@ -1,6 +1,6 @@
 ﻿namespace url_shortener.ModelsDTO
 {
-    public class UrlRepsonseDTO
+    public class LongUrlRepsonseDTO
     {
         public string Url { get; set; }
     }

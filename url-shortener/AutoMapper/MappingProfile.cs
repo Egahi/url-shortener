@@ -8,8 +8,11 @@ namespace url_shortener.AutoMapper
     {
         public MappingProfile() 
         {
-            CreateMap<Url, UrlRepsonseDTO>()
+            CreateMap<Url, LongUrlRepsonseDTO>()
                 .ForMember(dest => dest.Url, opt => opt.MapFrom(src => src.LongUrl));
+            CreateMap<Url, ShortUrlResponseDTO>()
+                .ForMember(dest => dest.Url, opt => opt.MapFrom(src => src.ShortUrl));
+
             CreateMap<UrlRequestDTO, Url>()
                 .ForMember(dest => dest.LongUrl, opt => opt.MapFrom(src => src.Url));
         }
