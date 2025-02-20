@@ -4,6 +4,7 @@ using System.Text;
 using System.Web;
 using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using url_shortener.Models;
 using url_shortener.ModelsDTO;
 using url_shortener.Repositories;
@@ -15,14 +16,16 @@ namespace url_shortener.Controllers
     [Route("[controller]/v1")]
     public class UrlServiceController : Controller
     {
-        public IUrlRepository UrlRepository { get; }
-
+        private IUrlRepository _urlRepository { get; }
+        private IMemoryCache _cache { get; } 
         private IMapper _mapper { get; }
         private static readonly Random random = new Random();
 
-        public UrlServiceController(IUrlRepository urlRepository, IMapper mapper)
+        public UrlServiceController(IUrlRepository urlRepository, 
+            IMapper mapper, IMemoryCache cache)
         {
-            UrlRepository = urlRepository;
+            _urlRepository = urlRepository;
+            _cache = cache;
             _mapper = mapper;
         }
 
@@ -32,11 +35,21 @@ namespace url_shortener.Controllers
         public IActionResult Get([FromRoute]string shortUrl = "")
         {
             var shortUrlDecoded = HttpUtility.UrlDecode(shortUrl);
-            var url = UrlRepository.GetOne(x => string.Equals(x.ShortUrl, shortUrlDecoded));
 
-            if (url == null)
+            if (!_cache.TryGetValue(shortUrlDecoded, out Url url))
             {
-                return NotFound();
+                // Key not in cache, so get data from database
+                url = _urlRepository.GetOne(x => string.Equals(x.ShortUrl, shortUrlDecoded));
+
+                if (url == null)
+                {
+                    return NotFound();
+                }
+
+                var cacheEntryOptions = new MemoryCacheEntryOptions()
+                    .SetSlidingExpiration(TimeSpan.FromMinutes(5));
+
+                _cache.Set(shortUrlDecoded, url, cacheEntryOptions);  
             }
 
             var response = _mapper.Map<LongUrlRepsonseDTO>(url);
@@ -79,7 +92,7 @@ namespace url_shortener.Controllers
 
         private bool GenerateShortUrl(Url url) 
         {
-            var existingUrl = UrlRepository.GetOne(x => string.Equals(x.LongUrl, url.LongUrl));
+            var existingUrl = _urlRepository.GetOne(x => string.Equals(x.LongUrl, url.LongUrl));
             if (existingUrl != null)
             {
                 url.ShortUrl = existingUrl.ShortUrl;
@@ -107,13 +120,13 @@ namespace url_shortener.Controllers
                     //shortUrl = AppConstants.BASE_URL + shortUrlBuilder.ToString();
 
                     shortUrl = shortUrlBuilder.ToString();
-                } while (UrlRepository.Get(x => string.Equals(x.ShortUrl, shortUrl)).Any());
+                } while (_urlRepository.Get(x => string.Equals(x.ShortUrl, shortUrl)).Any());
 
                 url.ShortUrl = shortUrl;
 
                 try
                 {
-                    UrlRepository.Insert(url);
+                    _urlRepository.Insert(url);
                 }
                 catch (Exception ex)
                 {
