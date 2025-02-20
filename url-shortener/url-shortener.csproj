@@ -9,6 +9,9 @@
 
   <ItemGroup>
     <PackageReference Include="AutoMapper" Version="14.0.0" />
+    <PackageReference Include="MongoDB.Bson" Version="2.30.0" />
+    <PackageReference Include="MongoDB.Driver" Version="2.30.0" />
+    <PackageReference Include="MongoDbGenericRepository" Version="1.6.3" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>

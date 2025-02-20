@@ -1,10 +1,13 @@
-﻿using System.Reflection;
+﻿using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Web;
 using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using url_shortener.Models;
 using url_shortener.ModelsDTO;
+using url_shortener.Repositories;
+using url_shortener.Utilities;
 
 namespace url_shortener.Controllers
 {
@@ -12,25 +15,29 @@ namespace url_shortener.Controllers
     [Route("[controller]/v1")]
     public class UrlServiceController : Controller
     {
-        private IMapper _mapper { get; }
-        private static readonly Dictionary<string, Url> _urlDictionary = new Dictionary<string, Url>();
-        private static readonly Dictionary<string, string> _reverseDictionary = new Dictionary<string, string>();
-        private static readonly string _baseChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        private static readonly Random random = new Random();
-        private static readonly int _minShortUrlLength = 6;
-        private static readonly int _maxShortUrlLength = 8;
-        private static readonly string _baseUrl = "short.url/";
+        public IUrlRepository UrlRepository { get; }
 
-        public UrlServiceController(IMapper mapper)
+        private IMapper _mapper { get; }
+        private static readonly Random random = new Random();
+
+        public UrlServiceController(IUrlRepository urlRepository, IMapper mapper)
         {
+            UrlRepository = urlRepository;
             _mapper = mapper;
         }
 
-        [HttpGet]
+        [HttpGet("{shortUrl}")]
         [ProducesResponseType(typeof(LongUrlRepsonseDTO), StatusCodes.Status200OK)]
-        public IActionResult Get([FromQuery]string shortUrl = "")
+        [ProducesResponseType(typeof(NotFoundResult), StatusCodes.Status404NotFound)]
+        public IActionResult Get([FromRoute]string shortUrl = "")
         {
-            var url = _urlDictionary.ContainsKey(shortUrl) ? _urlDictionary[shortUrl] : new Url();
+            var shortUrlDecoded = HttpUtility.UrlDecode(shortUrl);
+            var url = UrlRepository.GetOne(x => string.Equals(x.ShortUrl, shortUrlDecoded));
+
+            if (url == null)
+            {
+                return NotFound();
+            }
 
             var response = _mapper.Map<LongUrlRepsonseDTO>(url);
 
@@ -46,33 +53,43 @@ namespace url_shortener.Controllers
         {
             if (!ModelState.IsValid)
             {
-                return BadRequest(new ModelStateErrorResponseDTO(System.Net.HttpStatusCode.BadRequest, ModelState));
+                return BadRequest(new ErrorResponseDTO(System.Net.HttpStatusCode.BadRequest,
+                    new string[] { AppConstants.INVALID_URL_ERROR_MESSAGE }));
             }
 
             if (!IsValidUrl(model.Url))
             {
-                return BadRequest(new ErrorResponseDTO(System.Net.HttpStatusCode.BadRequest, new string[] { "Invalid url" }));
+                return BadRequest(new ErrorResponseDTO(System.Net.HttpStatusCode.BadRequest, 
+                    new string[] { AppConstants.INVALID_URL_ERROR_MESSAGE }));
             }
 
-            Url newUrl = _mapper.Map<Url>(model);
-            GenerateShortUrl(newUrl);
+            var newUrl = _mapper.Map<Url>(model);
+            var isSuccess = GenerateShortUrl(newUrl);
+
+            if (!isSuccess)
+            {
+                return BadRequest(new ErrorResponseDTO(HttpStatusCode.BadRequest,
+                    new string[] { AppConstants.DEFAULT_ERROR_MESSAGE }));
+            }
+
             var response = _mapper.Map<ShortUrlResponseDTO>(newUrl);
 
             return Ok(new DataResponseDTO<ShortUrlResponseDTO>(response));
         }
 
-        private static void GenerateShortUrl(Url url) 
+        private bool GenerateShortUrl(Url url) 
         {
-            if (_reverseDictionary.ContainsKey(url.LongUrl))
+            var existingUrl = UrlRepository.GetOne(x => string.Equals(x.LongUrl, url.LongUrl));
+            if (existingUrl != null)
             {
-                url.ShortUrl = _reverseDictionary[url.LongUrl];
-                return;
+                url.ShortUrl = existingUrl.ShortUrl;
+                return true;
             }
 
             using (SHA256 sha256 = SHA256.Create())
             {
                 byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(url.LongUrl));
-                int urlLength = random.Next(_minShortUrlLength, _maxShortUrlLength + 1);
+                int urlLength = random.Next(AppConstants.MIN_SHORTURL_LENGTH, AppConstants.MAX_SHORTURL_LENGTH + 1);
                 StringBuilder shortUrlBuilder;
                 string shortUrl;
 
@@ -83,16 +100,27 @@ namespace url_shortener.Controllers
                     for (int i = 0; i < urlLength; i++)
                     {
                         // Combine hash byte and randomness to reduce collisions
-                        shortUrlBuilder.Append(_baseChars[(hashBytes[i] + random.Next(_baseChars.Length)) % _baseChars.Length]);
+                        shortUrlBuilder.Append(AppConstants.BASECHARS[(hashBytes[i] + random.Next(AppConstants.BASECHARS.Length)) % AppConstants.BASECHARS.Length]);
                     }
 
-                    shortUrl = _baseUrl + shortUrlBuilder.ToString();
-                } while (_urlDictionary.ContainsKey(shortUrl));
+                    // If shortUrl should be formatted as a url
+                    //shortUrl = AppConstants.BASE_URL + shortUrlBuilder.ToString();
 
+                    shortUrl = shortUrlBuilder.ToString();
+                } while (UrlRepository.Get(x => string.Equals(x.ShortUrl, shortUrl)).Any());
 
                 url.ShortUrl = shortUrl;
-                _urlDictionary[url.ShortUrl] = url;
-                _reverseDictionary[url.LongUrl] = url.ShortUrl;
+
+                try
+                {
+                    UrlRepository.Insert(url);
+                }
+                catch (Exception ex)
+                {
+                    return false;
+                }
+
+                return true;
             }
         }
 
