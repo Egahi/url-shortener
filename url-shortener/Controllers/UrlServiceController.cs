@@ -32,29 +32,46 @@ namespace url_shortener.Controllers
         [HttpGet("{shortUrl}")]
         [ProducesResponseType(typeof(LongUrlRepsonseDTO), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(NotFoundResult), StatusCodes.Status404NotFound)]
-        public IActionResult Get([FromRoute]string shortUrl = "")
+        public async Task<IActionResult> Get([FromRoute]string shortUrl = "")
         {
             var shortUrlDecoded = HttpUtility.UrlDecode(shortUrl);
 
-            if (!_cache.TryGetValue(shortUrlDecoded, out Url url))
+            var url = await GetUrl(shortUrlDecoded);
+
+            if (url == null)
             {
-                // Key not in cache, so get data from database
-                url = _urlRepository.GetOne(x => string.Equals(x.ShortUrl, shortUrlDecoded));
-
-                if (url == null)
-                {
-                    return NotFound();
-                }
-
-                var cacheEntryOptions = new MemoryCacheEntryOptions()
-                    .SetSlidingExpiration(TimeSpan.FromMinutes(5));
-
-                _cache.Set(shortUrlDecoded, url, cacheEntryOptions);  
+                return NotFound();
             }
+
+            url.AccessCount++;
+            _urlRepository.Update(x => string.Equals(x.ShortUrl, url.ShortUrl), url); ;
+            
+            var cacheEntryOptions = new MemoryCacheEntryOptions()
+                    .SetSlidingExpiration(TimeSpan.FromMinutes(5));
+            _cache.Set(shortUrl, url, cacheEntryOptions);
 
             var response = _mapper.Map<LongUrlRepsonseDTO>(url);
 
             return Ok(new DataResponseDTO<LongUrlRepsonseDTO>(response));
+        }
+
+        [HttpGet("stats/{shortUrl}")]
+        [ProducesResponseType(typeof(URLStatsResponseDTO), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(NotFoundResult), StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetStats([FromRoute] string shortUrl = "")
+        {
+            var shortUrlDecoded = HttpUtility.UrlDecode(shortUrl);
+
+            var url = await GetUrl(shortUrlDecoded);
+
+            if (url == null)
+            {
+                return NotFound();
+            }
+
+            var response = _mapper.Map<URLStatsResponseDTO>(url);
+
+            return Ok(new DataResponseDTO<URLStatsResponseDTO>(response));
         }
 
         [HttpPost]
@@ -62,7 +79,7 @@ namespace url_shortener.Controllers
         [ProducesResponseType(typeof(ShortUrlResponseDTO), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ModelStateErrorResponseDTO), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ErrorResponseDTO), StatusCodes.Status400BadRequest)]
-        public IActionResult Post([FromBody]UrlRequestDTO model)
+        public async Task<IActionResult> Post([FromBody]UrlRequestDTO model)
         {
             if (!ModelState.IsValid)
             {
@@ -77,7 +94,7 @@ namespace url_shortener.Controllers
             }
 
             var newUrl = _mapper.Map<Url>(model);
-            var isSuccess = GenerateShortUrl(newUrl);
+            var isSuccess = await GenerateShortUrl(newUrl);
 
             if (!isSuccess)
             {
@@ -90,7 +107,7 @@ namespace url_shortener.Controllers
             return Ok(new DataResponseDTO<ShortUrlResponseDTO>(response));
         }
 
-        private bool GenerateShortUrl(Url url) 
+        private async Task<bool> GenerateShortUrl(Url url) 
         {
             var existingUrl = _urlRepository.GetOne(x => string.Equals(x.LongUrl, url.LongUrl));
             if (existingUrl != null)
@@ -141,6 +158,17 @@ namespace url_shortener.Controllers
         {
             return Uri.TryCreate(url, UriKind.Absolute, out Uri uriResult) && 
                 (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
+        }
+
+        private async Task<Url> GetUrl(string shortUrl)
+        {
+            if (!_cache.TryGetValue(shortUrl, out Url url))
+            {
+                // Key not in cache, so get data from database
+                url = _urlRepository.GetOne(x => string.Equals(x.ShortUrl, shortUrl));
+            }
+
+            return url;
         }
     }
 }
