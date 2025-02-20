@@ -5,7 +5,6 @@
         public static readonly string DEFAULT_ERROR_MESSAGE = "Something went wrong, please try again.";
         public static readonly string INVALID_URL_ERROR_MESSAGE = "Invalid url.";
         
-        public static readonly string MONGODB_CONNECTIONSTRING = "mongodb://localhost:27017/";
         public static readonly string URLS_REPOSITORY = "UrlsRepository";
 
         public static readonly string BASECHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";

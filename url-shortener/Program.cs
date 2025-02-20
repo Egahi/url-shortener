@@ -1,5 +1,7 @@
 
+using AspNetCoreRateLimit;
 using AutoMapper;
+using Microsoft.Extensions.Configuration;
 using MongoDbGenericRepository;
 using url_shortener.AutoMapper;
 using url_shortener.Repositories;
@@ -23,10 +25,20 @@ namespace url_shortener
             builder.Services.AddSingleton(mapper);
 
             // MongoDB
-            // Connection string and database name hardcoded for simplicity
-            var mongoDbContext = new MongoDbContext(AppConstants.MONGODB_CONNECTIONSTRING, AppConstants.URLS_REPOSITORY);
+            var mongoDbContext = new MongoDbContext(builder.Configuration.GetConnectionString("MongoDb"), 
+                builder.Configuration["MongoDbSettings:DatabaseName"]);
             builder.Services.AddSingleton(mongoDbContext);
             builder.Services.AddScoped<IUrlRepository, UrlRepository>();
+
+            // Add MemoryCache
+            builder.Services.AddMemoryCache();
+
+            // RateLimit
+            builder.Services.Configure<IpRateLimitOptions>(builder.Configuration.GetSection("IpRateLimiting"));
+            builder.Services.AddSingleton<IIpPolicyStore, MemoryCacheIpPolicyStore>();
+            builder.Services.AddSingleton<IRateLimitCounterStore, MemoryCacheRateLimitCounterStore>();
+            builder.Services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
+            builder.Services.AddInMemoryRateLimiting();
 
             builder.Services.AddControllers();
             // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -41,6 +53,8 @@ namespace url_shortener
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
+
+            app.UseIpRateLimiting();
 
             app.UseAuthorization();
 
