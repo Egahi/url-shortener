@@ -1,6 +1,7 @@
 
 using AspNetCoreRateLimit;
 using AutoMapper;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using MongoDbGenericRepository;
 using url_shortener.AutoMapper;
@@ -23,6 +24,8 @@ namespace url_shortener
             });
             IMapper mapper = mappingConfig.CreateMapper();
             builder.Services.AddSingleton(mapper);
+
+            builder.Services.AddCors();
 
             // MongoDB
             var mongoDbContext = new MongoDbContext(builder.Configuration.GetConnectionString("MongoDb"), 
@@ -50,12 +53,16 @@ namespace url_shortener
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
+                app.UseDeveloperExceptionPage();
+                app.UseCors(options => options.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
                 app.UseSwagger();
                 app.UseSwaggerUI();
             }
 
             app.UseIpRateLimiting();
 
+            app.UseHttpsRedirection();
+    
             app.UseAuthorization();
 
 

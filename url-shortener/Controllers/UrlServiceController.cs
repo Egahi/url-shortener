@@ -30,7 +30,6 @@ namespace url_shortener.Controllers
         }
 
         [HttpGet("{shortUrl}")]
-        [ProducesResponseType(typeof(LongUrlRepsonseDTO), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(NotFoundResult), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Get([FromRoute]string shortUrl = "")
         {
@@ -52,7 +51,7 @@ namespace url_shortener.Controllers
 
             var response = _mapper.Map<LongUrlRepsonseDTO>(url);
 
-            return Ok(new DataResponseDTO<LongUrlRepsonseDTO>(response));
+            return Redirect(url.LongUrl);
         }
 
         [HttpGet("stats/{shortUrl}")]
