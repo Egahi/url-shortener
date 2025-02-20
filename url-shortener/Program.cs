@@ -1,4 +1,7 @@
 
+using AutoMapper;
+using url_shortener.AutoMapper;
+
 namespace url_shortener
 {
     public class Program
@@ -8,6 +11,13 @@ namespace url_shortener
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
+            // Auto Mapper
+            var mappingConfig = new MapperConfiguration(mc =>
+            {
+                mc.AddProfile(new MappingProfile());
+            });
+            IMapper mapper = mappingConfig.CreateMapper();
+            builder.Services.AddSingleton(mapper);
 
             builder.Services.AddControllers();
             // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
